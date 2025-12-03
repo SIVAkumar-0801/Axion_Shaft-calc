@@ -28,6 +28,8 @@ MATERIALS = {
 # --- SESSION STATE INITIALIZATION ---
 if 'components' not in st.session_state:
     st.session_state.components = []
+if 'run_analysis' not in st.session_state:
+    st.session_state.run_analysis = False
 
 # --- PHYSICS ENGINE ---
 def get_torque(P_kw, N_rpm):
@@ -82,6 +84,7 @@ with col_input:
                 st.session_state.components.append({
                     'type': "Bearing", 'pos': b_pos, 'fv': 0, 'fh': 0, 'desc': "Support"
                 })
+                st.session_state.run_analysis = False # Reset analysis on change
                 st.rerun()
 
         # GEAR LOGIC
@@ -109,6 +112,7 @@ with col_input:
                         'type': "Gear", 'pos': g_pos, 'fv': fv, 'fh': fh, 
                         'desc': f"Z{int(g_teeth)} m{int(g_mod)}"
                     })
+                    st.session_state.run_analysis = False # Reset analysis on change
                     st.rerun()
 
         # PULLEY LOGIC
@@ -129,6 +133,7 @@ with col_input:
                         'type': "Pulley", 'pos': pu_pos, 'fv': fv, 'fh': fh, 
                         'desc': f"Dia {int(pu_dia)}"
                     })
+                    st.session_state.run_analysis = False # Reset analysis on change
                     st.rerun()
 
         # COMPONENT TABLE (PANDAS INTEGRATION)
@@ -151,13 +156,22 @@ with col_input:
                     c_txt.text(f"{c['type']} @ {c['pos']}mm")
                     if c_btn.button("Del", key=f"del_{i}"):
                         del st.session_state.components[i]
+                        st.session_state.run_analysis = False # Reset analysis on change
                         st.rerun()
                 
                 if st.button("Reset All Data", type="secondary"):
                     st.session_state.components = []
+                    st.session_state.run_analysis = False
                     st.rerun()
         else:
             st.info("System is empty. Add components above.")
+
+    # --- MAIN ACTION BUTTON ---
+    st.markdown("---")
+    # This button triggers the visibility of the results
+    if st.button("▶️ RUN SIMULATION", type="primary", use_container_width=True):
+        st.session_state.run_analysis = True
+        st.rerun()
 
 # ==========================================
 # RIGHT COLUMN: VISUALIZATION & ANALYSIS
@@ -175,7 +189,8 @@ with col_viz:
     ax2 = fig.add_subplot(gs[2], sharex=ax_cad)
     ax3 = fig.add_subplot(gs[3], sharex=ax_cad)
 
-    # --- DRAW SCHEMATIC ---
+    # --- DRAW SCHEMATIC (ALWAYS VISIBLE) ---
+    # We want users to see the setup before they run the math
     ax_cad.set_ylim(-80, 80)
     ax_cad.set_xlim(-50, len_input + 50)
     ax_cad.axis('off')
@@ -198,179 +213,185 @@ with col_viz:
             ax_cad.add_patch(patches.Rectangle((x-15, -30), 30, 60, fc="#2ecc71", alpha=0.7, ec="white"))
             ax_cad.text(x, 40, "Pulley", ha='center', color="#2ecc71", fontsize=9)
 
-    # --- CALCULATION LOGIC ---
-    bearings = sorted([c for c in st.session_state.components if c['type'] == "Bearing"], key=lambda x: x['pos'])
-    
-    if len(bearings) == 2:
-        b1, b2 = bearings[0], bearings[1]
-        L_span = b2['pos'] - b1['pos']
+    # --- CALCULATION LOGIC (ONLY IF BUTTON PRESSED) ---
+    if st.session_state.run_analysis:
+        bearings = sorted([c for c in st.session_state.components if c['type'] == "Bearing"], key=lambda x: x['pos'])
         
-        if L_span > 0:
-            # Solve Reactions
-            def solve_reactions(key):
-                m_sum = sum(c[key] * (c['pos'] - b1['pos']) for c in st.session_state.components if c['type']!="Bearing")
-                f_sum = sum(c[key] for c in st.session_state.components if c['type']!="Bearing")
-                Rb = -m_sum / L_span
-                Ra = -f_sum - Rb
-                return Ra, Rb
-
-            Rav, Rbv = solve_reactions('fv')
-            Rah, Rbh = solve_reactions('fh')
+        if len(bearings) == 2:
+            b1, b2 = bearings[0], bearings[1]
+            L_span = b2['pos'] - b1['pos']
             
-            # Generate Moment Arrays
-            x_vals = np.arange(0, len_input + 1, 5)
-            M_v, M_h, M_res = [], [], []
-            max_M = 0
-            
-            for x in x_vals:
-                mv, mh = 0, 0
-                if x > b1['pos']: mv += Rav*(x-b1['pos']); mh += Rah*(x-b1['pos'])
-                if x > b2['pos']: mv += Rbv*(x-b2['pos']); mh += Rbh*(x-b2['pos'])
-                for c in st.session_state.components:
-                    if c['type']!="Bearing" and x > c['pos']:
-                        mv += c['fv']*(x-c['pos']); mh += c['fh']*(x-c['pos'])
-                
-                res = math.sqrt(mv**2 + mh**2)
-                M_v.append(mv)
-                M_h.append(mh)
-                M_res.append(res)
-                if res > max_M: max_M = res
+            if L_span > 0:
+                # Solve Reactions
+                def solve_reactions(key):
+                    m_sum = sum(c[key] * (c['pos'] - b1['pos']) for c in st.session_state.components if c['type']!="Bearing")
+                    f_sum = sum(c[key] for c in st.session_state.components if c['type']!="Bearing")
+                    Rb = -m_sum / L_span
+                    Ra = -f_sum - Rb
+                    return Ra, Rb
 
-            # --- PLOT GRAPHS (UI) ---
-            def plot_line(ax, y_data, color, label):
-                y_scaled = [y/1000 for y in y_data] # Convert to Nm
-                ax.plot(x_vals, y_scaled, color=color, lw=1.5)
-                ax.fill_between(x_vals, y_scaled, color=color, alpha=0.2)
-                ax.grid(True, color="#444", linestyle=':')
-                ax.text(0.02, 0.9, label, transform=ax.transAxes, color=color, fontweight='bold')
-            
-            plot_line(ax1, M_v, "#00e5ff", "VERTICAL BENDING (Nm)")
-            plot_line(ax2, M_h, "#e040fb", "HORIZONTAL BENDING (Nm)")
-            plot_line(ax3, M_res, "#ffea00", f"RESULTANT (Max: {max_M/1000:.1f} Nm)")
-            
-            st.pyplot(fig)
-
-            # --- RESULTS BOX ---
-            T_nmm = get_torque(p_input, n_input)
-            tau_allow = min(0.3*sy_input, 0.18*sut_input)
-            if keyway_present: tau_allow *= 0.75
-            
-            M_eq = math.sqrt( (kb_input*max_M)**2 + (kt_input*T_nmm)**2 )
-            d_req = ((16*M_eq)/(math.pi*tau_allow))**(1/3) if tau_allow > 0 else 0
-            
-            st.success(f"### ✅ MINIMUM DIAMETER: {d_req:.3f} mm")
-            
-            with st.expander("See Calculation Details"):
-                st.write(f"**Torque:** {T_nmm/1000:.2f} Nm")
-                st.write(f"**Max Bending Moment:** {max_M/1000:.2f} Nm")
-                st.write(f"**Allowable Shear:** {tau_allow:.2f} MPa")
-                st.write(f"**Reaction A:** V:{int(Rav)}N / H:{int(Rah)}N")
-                st.write(f"**Reaction B:** V:{int(Rbv)}N / H:{int(Rbh)}N")
-
-            # ==========================================
-            # FPDF REPORT GENERATION
-            # ==========================================
-            def generate_pdf():
-                pdf = FPDF()
-                pdf.add_page()
+                Rav, Rbv = solve_reactions('fv')
+                Rah, Rbh = solve_reactions('fh')
                 
-                # HEADER
-                pdf.set_font("Arial", "B", 16)
-                pdf.cell(0, 10, "BEAM STUDIO PRO | ENGINEERING REPORT", ln=True, align='C')
-                pdf.set_font("Arial", "I", 10)
-                pdf.cell(0, 10, "ASME B106.1M Transmission Shaft Analysis", ln=True, align='C')
-                pdf.line(10, 30, 200, 30)
-                pdf.ln(10)
-
-                # SECTION 1: DATA
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(0, 10, "1. DESIGN PARAMETERS", ln=True)
-                pdf.set_font("Arial", "", 10)
+                # Generate Moment Arrays
+                x_vals = np.arange(0, len_input + 1, 5)
+                M_v, M_h, M_res = [], [], []
+                max_M = 0
                 
-                col_w = 45
-                pdf.cell(col_w, 8, f"Power: {p_input} kW", 1)
-                pdf.cell(col_w, 8, f"Speed: {n_input} RPM", 1)
-                pdf.cell(col_w, 8, f"Torque: {T_nmm/1000:.1f} Nm", 1)
-                pdf.cell(col_w, 8, f"Length: {len_input} mm", 1, 1)
-                
-                pdf.cell(col_w, 8, f"Mat: {mat_choice[:15]}...", 1)
-                pdf.cell(col_w, 8, f"Yield: {sy_input} MPa", 1)
-                pdf.cell(col_w, 8, f"Ult: {sut_input} MPa", 1)
-                pdf.cell(col_w, 8, f"Shear Allow: {tau_allow:.1f}", 1, 1)
-                pdf.ln(5)
-
-                # SECTION 2: COMPONENTS (Mimicking Pandas Table)
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(0, 10, "2. LOAD INVENTORY", ln=True)
-                
-                pdf.set_fill_color(240, 240, 240)
-                pdf.set_font("Arial", "B", 9)
-                headers = ["Type", "Pos (mm)", "Vert Force (N)", "Horz Force (N)", "Description"]
-                widths = [25, 20, 30, 30, 85]
-                
-                for w, h in zip(widths, headers):
-                    pdf.cell(w, 8, h, 1, 0, 'C', fill=True)
-                pdf.ln()
-                
-                pdf.set_font("Arial", "", 9)
-                for c in st.session_state.components:
-                    pdf.cell(widths[0], 8, str(c['type']), 1)
-                    pdf.cell(widths[1], 8, str(int(c['pos'])), 1)
-                    pdf.cell(widths[2], 8, str(int(c['fv'])), 1)
-                    pdf.cell(widths[3], 8, str(int(c['fh'])), 1)
-                    pdf.cell(widths[4], 8, str(c['desc']), 1, 1)
-                pdf.ln(5)
-
-                # SECTION 3: GRAPHS (Clean White Background for PDF)
-                pdf.set_font("Arial", "B", 12)
-                pdf.cell(0, 10, "3. MOMENT DIAGRAMS", ln=True)
-                
-                # Switch to default (white) style for printing
-                with plt.style.context('default'):
-                    fig_pdf = plt.figure(figsize=(8, 6))
-                    gs_pdf = fig_pdf.add_gridspec(3, 1)
-                    ax_p1 = fig_pdf.add_subplot(gs_pdf[0])
-                    ax_p2 = fig_pdf.add_subplot(gs_pdf[1])
-                    ax_p3 = fig_pdf.add_subplot(gs_pdf[2])
+                for x in x_vals:
+                    mv, mh = 0, 0
+                    if x > b1['pos']: mv += Rav*(x-b1['pos']); mh += Rah*(x-b1['pos'])
+                    if x > b2['pos']: mv += Rbv*(x-b2['pos']); mh += Rbh*(x-b2['pos'])
+                    for c in st.session_state.components:
+                        if c['type']!="Bearing" and x > c['pos']:
+                            mv += c['fv']*(x-c['pos']); mh += c['fh']*(x-c['pos'])
                     
-                    # Re-plot for PDF
-                    ax_p1.plot(x_vals, [y/1000 for y in M_v], 'b'); ax_p1.set_ylabel("Vert (Nm)"); ax_p1.grid(True)
-                    ax_p2.plot(x_vals, [y/1000 for y in M_h], 'g'); ax_p2.set_ylabel("Horz (Nm)"); ax_p2.grid(True)
-                    ax_p3.plot(x_vals, [y/1000 for y in M_res], 'r'); ax_p3.set_ylabel("Res (Nm)"); ax_p3.grid(True)
+                    res = math.sqrt(mv**2 + mh**2)
+                    M_v.append(mv)
+                    M_h.append(mh)
+                    M_res.append(res)
+                    if res > max_M: max_M = res
+
+                # --- PLOT GRAPHS (UI) ---
+                def plot_line(ax, y_data, color, label):
+                    y_scaled = [y/1000 for y in y_data] # Convert to Nm
+                    ax.plot(x_vals, y_scaled, color=color, lw=1.5)
+                    ax.fill_between(x_vals, y_scaled, color=color, alpha=0.2)
+                    ax.grid(True, color="#444", linestyle=':')
+                    ax.text(0.02, 0.9, label, transform=ax.transAxes, color=color, fontweight='bold')
+                
+                plot_line(ax1, M_v, "#00e5ff", "VERTICAL BENDING (Nm)")
+                plot_line(ax2, M_h, "#e040fb", "HORIZONTAL BENDING (Nm)")
+                plot_line(ax3, M_res, "#ffea00", f"RESULTANT (Max: {max_M/1000:.1f} Nm)")
+                
+                st.pyplot(fig)
+
+                # --- RESULTS BOX ---
+                T_nmm = get_torque(p_input, n_input)
+                tau_allow = min(0.3*sy_input, 0.18*sut_input)
+                if keyway_present: tau_allow *= 0.75
+                
+                M_eq = math.sqrt( (kb_input*max_M)**2 + (kt_input*T_nmm)**2 )
+                d_req = ((16*M_eq)/(math.pi*tau_allow))**(1/3) if tau_allow > 0 else 0
+                
+                st.success(f"### ✅ MINIMUM DIAMETER: {d_req:.3f} mm")
+                
+                with st.expander("See Calculation Details"):
+                    st.write(f"**Torque:** {T_nmm/1000:.2f} Nm")
+                    st.write(f"**Max Bending Moment:** {max_M/1000:.2f} Nm")
+                    st.write(f"**Allowable Shear:** {tau_allow:.2f} MPa")
+                    st.write(f"**Reaction A:** V:{int(Rav)}N / H:{int(Rah)}N")
+                    st.write(f"**Reaction B:** V:{int(Rbv)}N / H:{int(Rbh)}N")
+
+                # ==========================================
+                # FPDF REPORT GENERATION
+                # ==========================================
+                def generate_pdf():
+                    pdf = FPDF()
+                    pdf.add_page()
                     
-                    plt.tight_layout()
+                    # HEADER
+                    pdf.set_font("Arial", "B", 16)
+                    pdf.cell(0, 10, "BEAM STUDIO PRO | ENGINEERING REPORT", ln=True, align='C')
+                    pdf.set_font("Arial", "I", 10)
+                    pdf.cell(0, 10, "ASME B106.1M Transmission Shaft Analysis", ln=True, align='C')
+                    pdf.line(10, 30, 200, 30)
+                    pdf.ln(10)
+
+                    # SECTION 1: DATA
+                    pdf.set_font("Arial", "B", 12)
+                    pdf.cell(0, 10, "1. DESIGN PARAMETERS", ln=True)
+                    pdf.set_font("Arial", "", 10)
                     
-                    # Save to temp file
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
-                        fig_pdf.savefig(tmpfile.name, dpi=150)
-                        tmp_name = tmpfile.name
+                    col_w = 45
+                    pdf.cell(col_w, 8, f"Power: {p_input} kW", 1)
+                    pdf.cell(col_w, 8, f"Speed: {n_input} RPM", 1)
+                    pdf.cell(col_w, 8, f"Torque: {T_nmm/1000:.1f} Nm", 1)
+                    pdf.cell(col_w, 8, f"Length: {len_input} mm", 1, 1)
                     
-                    # Embed and delete
-                    pdf.image(tmp_name, x=10, w=190)
-                    os.unlink(tmp_name)
+                    pdf.cell(col_w, 8, f"Mat: {mat_choice[:15]}...", 1)
+                    pdf.cell(col_w, 8, f"Yield: {sy_input} MPa", 1)
+                    pdf.cell(col_w, 8, f"Ult: {sut_input} MPa", 1)
+                    pdf.cell(col_w, 8, f"Shear Allow: {tau_allow:.1f}", 1, 1)
+                    pdf.ln(5)
 
-                # SECTION 4: RESULT
-                pdf.ln(5)
-                pdf.set_fill_color(220, 255, 220)
-                pdf.rect(10, pdf.get_y(), 190, 15, 'DF')
-                pdf.set_y(pdf.get_y() + 4)
-                pdf.set_font("Arial", "B", 14)
-                pdf.cell(0, 8, f"MINIMUM SHAFT DIAMETER REQUIRED: {d_req:.3f} mm", align='C')
+                    # SECTION 2: COMPONENTS (Mimicking Pandas Table)
+                    pdf.set_font("Arial", "B", 12)
+                    pdf.cell(0, 10, "2. LOAD INVENTORY", ln=True)
+                    
+                    pdf.set_fill_color(240, 240, 240)
+                    pdf.set_font("Arial", "B", 9)
+                    headers = ["Type", "Pos (mm)", "Vert Force (N)", "Horz Force (N)", "Description"]
+                    widths = [25, 20, 30, 30, 85]
+                    
+                    for w, h in zip(widths, headers):
+                        pdf.cell(w, 8, h, 1, 0, 'C', fill=True)
+                    pdf.ln()
+                    
+                    pdf.set_font("Arial", "", 9)
+                    for c in st.session_state.components:
+                        pdf.cell(widths[0], 8, str(c['type']), 1)
+                        pdf.cell(widths[1], 8, str(int(c['pos'])), 1)
+                        pdf.cell(widths[2], 8, str(int(c['fv'])), 1)
+                        pdf.cell(widths[3], 8, str(int(c['fh'])), 1)
+                        pdf.cell(widths[4], 8, str(c['desc']), 1, 1)
+                    pdf.ln(5)
 
-                return pdf.output(dest='S').encode('latin-1')
+                    # SECTION 3: GRAPHS (Clean White Background for PDF)
+                    pdf.set_font("Arial", "B", 12)
+                    pdf.cell(0, 10, "3. MOMENT DIAGRAMS", ln=True)
+                    
+                    # Switch to default (white) style for printing
+                    with plt.style.context('default'):
+                        fig_pdf = plt.figure(figsize=(8, 6))
+                        gs_pdf = fig_pdf.add_gridspec(3, 1)
+                        ax_p1 = fig_pdf.add_subplot(gs_pdf[0])
+                        ax_p2 = fig_pdf.add_subplot(gs_pdf[1])
+                        ax_p3 = fig_pdf.add_subplot(gs_pdf[2])
+                        
+                        # Re-plot for PDF
+                        ax_p1.plot(x_vals, [y/1000 for y in M_v], 'b'); ax_p1.set_ylabel("Vert (Nm)"); ax_p1.grid(True)
+                        ax_p2.plot(x_vals, [y/1000 for y in M_h], 'g'); ax_p2.set_ylabel("Horz (Nm)"); ax_p2.grid(True)
+                        ax_p3.plot(x_vals, [y/1000 for y in M_res], 'r'); ax_p3.set_ylabel("Res (Nm)"); ax_p3.grid(True)
+                        
+                        plt.tight_layout()
+                        
+                        # Save to temp file
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
+                            fig_pdf.savefig(tmpfile.name, dpi=150)
+                            tmp_name = tmpfile.name
+                        
+                        # Embed and delete
+                        pdf.image(tmp_name, x=10, w=190)
+                        os.unlink(tmp_name)
 
-            # --- DOWNLOAD BUTTON ---
-            pdf_bytes = generate_pdf()
-            st.download_button(
-                label="📥 Download Professional Report (PDF)",
-                data=pdf_bytes,
-                file_name="BeamStudio_Report.pdf",
-                mime="application/pdf",
-                use_container_width=True
-            )
+                    # SECTION 4: RESULT
+                    pdf.ln(5)
+                    pdf.set_fill_color(220, 255, 220)
+                    pdf.rect(10, pdf.get_y(), 190, 15, 'DF')
+                    pdf.set_y(pdf.get_y() + 4)
+                    pdf.set_font("Arial", "B", 14)
+                    pdf.cell(0, 8, f"MINIMUM SHAFT DIAMETER REQUIRED: {d_req:.3f} mm", align='C')
 
+                    return pdf.output(dest='S').encode('latin-1')
+
+                # --- DOWNLOAD BUTTON ---
+                pdf_bytes = generate_pdf()
+                st.download_button(
+                    label="📥 Download Professional Report (PDF)",
+                    data=pdf_bytes,
+                    file_name="BeamStudio_Report.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+
+            else:
+                st.error("⚠️ Geometry Error: Bearings must be separated (Span > 0).")
         else:
-            st.error("⚠️ Geometry Error: Bearings must be separated (Span > 0).")
+            # Show empty schematic if analysis not possible
+            st.pyplot(fig)
+            st.warning("⚠️ SETUP INCOMPLETE: Please add exactly 2 Bearings to calculate.")
     else:
+        # Show schematic if button not pressed
         st.pyplot(fig)
-        st.warning("⚠️ SETUP INCOMPLETE: Please add exactly 2 Bearings to calculate.")
+        st.info("👆 Configure components on the left and click 'RUN SIMULATION' to see results.")
