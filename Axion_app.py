@@ -10,9 +10,9 @@ import os
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Beam Studio Pro | Web Edition",
+    page_title="Kinetic Nexus | Web Edition",
     layout="wide",
-    page_icon="⚙️",
+    page_icon="⚛️",
     initial_sidebar_state="expanded"
 )
 
@@ -40,8 +40,8 @@ def get_torque(P_kw, N_rpm):
     return ((P * 60) / (2 * math.pi * N_rpm)) * 1000
 
 # --- UI LAYOUT ---
-st.title("⚙️ Beam Studio Pro | Enterprise Web Edition")
-st.markdown("**ASME B106.1M Transmission Shaft Design & Analysis Tool**")
+st.title("⚛️ KINETIC NEXUS | Design Engine")
+st.markdown("**Advanced Rotational Physics & Shaft Architecture Tool**")
 st.markdown("---")
 
 # Create main layout: Left (Controls) vs Right (Visuals)
@@ -52,14 +52,14 @@ col_input, col_viz = st.columns([1, 1.5])
 # ==========================================
 with col_input:
     # 1. SPECIFICATIONS CARD
-    with st.expander("1. DESIGN SPECIFICATIONS", expanded=True):
-        st.caption("System Parameters")
+    with st.expander("1. KINETIC PARAMETERS", expanded=True):
+        st.caption("System Inputs")
         c1, c2 = st.columns(2)
         p_input = c1.number_input("Power (kW)", value=10.0, step=0.5)
         n_input = c2.number_input("Speed (RPM)", value=500.0, step=10.0)
         len_input = st.number_input("Shaft Length (mm)", value=1000.0, step=50.0)
         
-        st.caption("Material Properties")
+        st.caption("Material Matrix")
         mat_choice = st.selectbox("Material Class", list(MATERIALS.keys()))
         def_sy, def_sut = MATERIALS[mat_choice]
         
@@ -67,20 +67,20 @@ with col_input:
         sy_input = c3.number_input("Yield (Sy)", value=float(def_sy))
         sut_input = c4.number_input("Ultimate (Sut)", value=float(def_sut))
         
-        st.caption("ASME Safety Factors")
+        st.caption("Safety Coefficients (ASME)")
         f1, f2 = st.columns(2)
         kb_input = f1.number_input("Kb (Bend)", value=1.5)
         kt_input = f2.number_input("Kt (Torsion)", value=1.0)
-        keyway_present = st.checkbox("Keyway Present (0.75 shear factor)", value=True)
+        keyway_present = st.checkbox("Keyway Geometry (0.75 shear factor)", value=True)
 
     # 2. COMPONENT MANAGER CARD
-    with st.expander("2. COMPONENT MANAGER", expanded=True):
+    with st.expander("2. LOAD CONFIGURATOR", expanded=True):
         tab_b, tab_g, tab_p = st.tabs(["Bearing", "Gear", "Pulley"])
         
         # BEARING LOGIC
         with tab_b:
             b_pos = st.number_input("Position (mm)", value=0, key="b_p")
-            if st.button("Add Bearing", type="primary"):
+            if st.button("Initialize Bearing", type="primary"):
                 st.session_state.components.append({
                     'type': "Bearing", 'pos': b_pos, 'fv': 0, 'fh': 0, 'desc': "Support"
                 })
@@ -96,7 +96,7 @@ with col_input:
             g_press = st.number_input("Pressure (°)", value=20.0)
             g_mesh = st.selectbox("Mesh Loc", ["Top", "Bottom", "Right", "Left"])
             
-            if st.button("Add Gear", type="primary"):
+            if st.button("Mount Gear", type="primary"):
                 radius = (g_teeth * g_mod) / 2
                 T_nmm = get_torque(p_input, n_input)
                 if radius > 0 and T_nmm > 0:
@@ -122,7 +122,7 @@ with col_input:
             pu_fact = st.number_input("Belt Factor", value=1.5)
             pu_dir = st.selectbox("Tension Dir", ["Vertical", "Horizontal"])
             
-            if st.button("Add Pulley", type="primary"):
+            if st.button("Mount Pulley", type="primary"):
                 r = pu_dia / 2
                 T_nmm = get_torque(p_input, n_input)
                 if r > 0 and T_nmm > 0:
@@ -137,39 +137,39 @@ with col_input:
                     st.rerun()
 
         # COMPONENT TABLE (PANDAS INTEGRATION)
-        st.markdown("#### 📋 Load Inventory")
+        st.markdown("#### 📋 System Inventory")
         if st.session_state.components:
             # 1. Create DataFrame
             df = pd.DataFrame(st.session_state.components)
             
             # 2. Format for Display (Select specific columns and rename)
             display_df = df[['type', 'pos', 'fv', 'fh', 'desc']].copy()
-            display_df.columns = ["Type", "Pos (mm)", "Vert (N)", "Horz (N)", "Description"]
+            display_df.columns = ["Element", "Axial Pos", "V-Load", "H-Load", "Specs"]
             
             # 3. Show Table
             st.dataframe(display_df, use_container_width=True, hide_index=True)
 
             # 4. Deletion Controls
-            with st.expander("🗑️ Remove Components"):
+            with st.expander("🗑️ Dismantle Components"):
                 for i, c in enumerate(st.session_state.components):
                     c_txt, c_btn = st.columns([4, 1])
                     c_txt.text(f"{c['type']} @ {c['pos']}mm")
-                    if c_btn.button("Del", key=f"del_{i}"):
+                    if c_btn.button("Purge", key=f"del_{i}"):
                         del st.session_state.components[i]
                         st.session_state.run_analysis = False # Reset analysis on change
                         st.rerun()
                 
-                if st.button("Reset All Data", type="secondary"):
+                if st.button("Reset Nexus", type="secondary"):
                     st.session_state.components = []
                     st.session_state.run_analysis = False
                     st.rerun()
         else:
-            st.info("System is empty. Add components above.")
+            st.info("Nexus is empty. Initialize components above.")
 
     # --- MAIN ACTION BUTTON ---
     st.markdown("---")
     # This button triggers the visibility of the results
-    if st.button("▶️ RUN SIMULATION", type="primary", use_container_width=True):
+    if st.button("⚡ ACTIVATE SIMULATION CORE", type="primary", use_container_width=True):
         st.session_state.run_analysis = True
         st.rerun()
 
@@ -177,7 +177,7 @@ with col_input:
 # RIGHT COLUMN: VISUALIZATION & ANALYSIS
 # ==========================================
 with col_viz:
-    st.header("3. ANALYSIS DASHBOARD")
+    st.header("3. ANALYTICAL READOUT")
     
     # --- MATPLOTLIB SETUP (DARK MODE FOR UI) ---
     plt.style.use('dark_background')
@@ -194,7 +194,7 @@ with col_viz:
     ax_cad.set_ylim(-80, 80)
     ax_cad.set_xlim(-50, len_input + 50)
     ax_cad.axis('off')
-    ax_cad.set_title("SHAFT CONFIGURATION", color="white", fontweight="bold")
+    ax_cad.set_title("GEOMETRIC TOPOLOGY", color="white", fontweight="bold")
     
     # Shaft Body
     ax_cad.plot([-20, len_input+20], [0, 0], '-.', color="#555", lw=1)
@@ -292,15 +292,15 @@ with col_viz:
                     
                     # HEADER
                     pdf.set_font("Arial", "B", 16)
-                    pdf.cell(0, 10, "BEAM STUDIO PRO | ENGINEERING REPORT", ln=True, align='C')
+                    pdf.cell(0, 10, "KINETIC NEXUS | ENGINEERING REPORT", ln=True, align='C')
                     pdf.set_font("Arial", "I", 10)
-                    pdf.cell(0, 10, "ASME B106.1M Transmission Shaft Analysis", ln=True, align='C')
+                    pdf.cell(0, 10, "Advanced Rotational Physics Analysis", ln=True, align='C')
                     pdf.line(10, 30, 200, 30)
                     pdf.ln(10)
 
                     # SECTION 1: DATA
                     pdf.set_font("Arial", "B", 12)
-                    pdf.cell(0, 10, "1. DESIGN PARAMETERS", ln=True)
+                    pdf.cell(0, 10, "1. KINETIC PARAMETERS", ln=True)
                     pdf.set_font("Arial", "", 10)
                     
                     col_w = 45
@@ -317,11 +317,11 @@ with col_viz:
 
                     # SECTION 2: COMPONENTS (Mimicking Pandas Table)
                     pdf.set_font("Arial", "B", 12)
-                    pdf.cell(0, 10, "2. LOAD INVENTORY", ln=True)
+                    pdf.cell(0, 10, "2. SYSTEM TOPOLOGY", ln=True)
                     
                     pdf.set_fill_color(240, 240, 240)
                     pdf.set_font("Arial", "B", 9)
-                    headers = ["Type", "Pos (mm)", "Vert Force (N)", "Horz Force (N)", "Description"]
+                    headers = ["Element", "Axial Pos", "V-Load", "H-Load", "Specs"]
                     widths = [25, 20, 30, 30, 85]
                     
                     for w, h in zip(widths, headers):
@@ -339,7 +339,7 @@ with col_viz:
 
                     # SECTION 3: GRAPHS (Clean White Background for PDF)
                     pdf.set_font("Arial", "B", 12)
-                    pdf.cell(0, 10, "3. MOMENT DIAGRAMS", ln=True)
+                    pdf.cell(0, 10, "3. MOMENT VECTORS", ln=True)
                     
                     # Switch to default (white) style for printing
                     with plt.style.context('default'):
@@ -380,18 +380,18 @@ with col_viz:
                 st.download_button(
                     label="📥 Download Professional Report (PDF)",
                     data=pdf_bytes,
-                    file_name="BeamStudio_Report.pdf",
+                    file_name="KineticNexus_Report.pdf",
                     mime="application/pdf",
                     use_container_width=True
                 )
 
             else:
-                st.error("⚠️ Geometry Error: Bearings must be separated (Span > 0).")
+                st.error("⚠️ Topology Error: Supports must be separated (Span > 0).")
         else:
             # Show empty schematic if analysis not possible
             st.pyplot(fig)
-            st.warning("⚠️ SETUP INCOMPLETE: Please add exactly 2 Bearings to calculate.")
+            st.warning("⚠️ TOPOLOGY INCOMPLETE: Please initialize 2 Bearings.")
     else:
         # Show schematic if button not pressed
         st.pyplot(fig)
-        st.info("👆 Configure components on the left and click 'RUN SIMULATION' to see results.")
+        st.info("👆 Configure nexus components and click 'ACTIVATE SIMULATION CORE'.")
