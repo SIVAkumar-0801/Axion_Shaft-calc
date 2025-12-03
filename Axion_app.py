@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 import math
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -12,7 +13,7 @@ st.set_page_config(
     page_title="Beam Studio Pro | Web Edition",
     layout="wide",
     page_icon="⚙️",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # --- CONSTANTS & MATERIALS ---
@@ -30,18 +31,19 @@ if 'components' not in st.session_state:
 
 # --- PHYSICS ENGINE ---
 def get_torque(P_kw, N_rpm):
+    """Calculates Torque in N-mm from Power (kW) and Speed (RPM)"""
     if N_rpm <= 0: return 0
-    P = P_kw * 1000
+    P = P_kw * 1000 # Convert to Watts
     # T = (P * 60) / (2 * pi * N)
     return ((P * 60) / (2 * math.pi * N_rpm)) * 1000
 
 # --- UI LAYOUT ---
 st.title("⚙️ Beam Studio Pro | Enterprise Web Edition")
-st.markdown("ASME B106.1M Transmission Shaft Design & Analysis Tool")
+st.markdown("**ASME B106.1M Transmission Shaft Design & Analysis Tool**")
 st.markdown("---")
 
 # Create main layout: Left (Controls) vs Right (Visuals)
-col_input, col_viz = st.columns([1, 2])
+col_input, col_viz = st.columns([1, 1.5])
 
 # ==========================================
 # LEFT COLUMN: INPUTS
@@ -50,23 +52,24 @@ with col_input:
     # 1. SPECIFICATIONS CARD
     with st.expander("1. DESIGN SPECIFICATIONS", expanded=True):
         st.caption("System Parameters")
-        p_input = st.number_input("Power Input (kW)", value=10.0, step=0.5)
-        n_input = st.number_input("Shaft Speed (RPM)", value=500.0, step=10.0)
+        c1, c2 = st.columns(2)
+        p_input = c1.number_input("Power (kW)", value=10.0, step=0.5)
+        n_input = c2.number_input("Speed (RPM)", value=500.0, step=10.0)
         len_input = st.number_input("Shaft Length (mm)", value=1000.0, step=50.0)
         
-        st.caption("Material Selection")
-        mat_choice = st.selectbox("Material", list(MATERIALS.keys()))
+        st.caption("Material Properties")
+        mat_choice = st.selectbox("Material Class", list(MATERIALS.keys()))
         def_sy, def_sut = MATERIALS[mat_choice]
         
-        c1, c2 = st.columns(2)
-        sy_input = c1.number_input("Yield (Sy)", value=float(def_sy))
-        sut_input = c2.number_input("Ultimate (Sut)", value=float(def_sut))
+        c3, c4 = st.columns(2)
+        sy_input = c3.number_input("Yield (Sy)", value=float(def_sy))
+        sut_input = c4.number_input("Ultimate (Sut)", value=float(def_sut))
         
-        st.caption("ASME Shock Factors")
+        st.caption("ASME Safety Factors")
         f1, f2 = st.columns(2)
         kb_input = f1.number_input("Kb (Bend)", value=1.5)
         kt_input = f2.number_input("Kt (Torsion)", value=1.0)
-        keyway_present = st.checkbox("Keyway Present (0.75 factor)", value=True)
+        keyway_present = st.checkbox("Keyway Present (0.75 shear factor)", value=True)
 
     # 2. COMPONENT MANAGER CARD
     with st.expander("2. COMPONENT MANAGER", expanded=True):
@@ -87,8 +90,8 @@ with col_input:
             c1, c2 = st.columns(2)
             g_teeth = c1.number_input("Teeth (Z)", value=40)
             g_mod = c2.number_input("Module (m)", value=4.0)
-            g_press = st.number_input("Pressure Angle (°)", value=20.0)
-            g_mesh = st.selectbox("Mesh Location", ["Top", "Bottom", "Right", "Left"])
+            g_press = st.number_input("Pressure (°)", value=20.0)
+            g_mesh = st.selectbox("Mesh Loc", ["Top", "Bottom", "Right", "Left"])
             
             if st.button("Add Gear", type="primary"):
                 radius = (g_teeth * g_mod) / 2
@@ -104,7 +107,7 @@ with col_input:
                     
                     st.session_state.components.append({
                         'type': "Gear", 'pos': g_pos, 'fv': fv, 'fh': fh, 
-                        'desc': f"Gear Z{int(g_teeth)} m{int(g_mod)}"
+                        'desc': f"Z{int(g_teeth)} m{int(g_mod)}"
                     })
                     st.rerun()
 
@@ -113,7 +116,7 @@ with col_input:
             pu_pos = st.number_input("Position (mm)", value=800, key="p_p")
             pu_dia = st.number_input("Diameter (mm)", value=150)
             pu_fact = st.number_input("Belt Factor", value=1.5)
-            pu_dir = st.selectbox("Tension Direction", ["Vertical", "Horizontal"])
+            pu_dir = st.selectbox("Tension Dir", ["Vertical", "Horizontal"])
             
             if st.button("Add Pulley", type="primary"):
                 r = pu_dia / 2
@@ -124,27 +127,37 @@ with col_input:
                     fh = -F_bend if pu_dir == "Horizontal" else 0
                     st.session_state.components.append({
                         'type': "Pulley", 'pos': pu_pos, 'fv': fv, 'fh': fh, 
-                        'desc': f"Pulley D{int(pu_dia)}"
+                        'desc': f"Dia {int(pu_dia)}"
                     })
                     st.rerun()
 
-        # COMPONENT LIST
-        st.markdown("#### Active Components")
+        # COMPONENT TABLE (PANDAS INTEGRATION)
+        st.markdown("#### 📋 Load Inventory")
         if st.session_state.components:
-            for i, c in enumerate(st.session_state.components):
-                with st.container():
-                    col_text, col_del = st.columns([4, 1])
-                    info = f"**{c['type']}** @ {int(c['pos'])}mm | V:{int(c['fv'])}N H:{int(c['fh'])}N"
-                    col_text.markdown(info)
-                    if col_del.button("🗑️", key=f"del_{i}"):
+            # 1. Create DataFrame
+            df = pd.DataFrame(st.session_state.components)
+            
+            # 2. Format for Display (Select specific columns and rename)
+            display_df = df[['type', 'pos', 'fv', 'fh', 'desc']].copy()
+            display_df.columns = ["Type", "Pos (mm)", "Vert (N)", "Horz (N)", "Description"]
+            
+            # 3. Show Table
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            # 4. Deletion Controls
+            with st.expander("🗑️ Remove Components"):
+                for i, c in enumerate(st.session_state.components):
+                    c_txt, c_btn = st.columns([4, 1])
+                    c_txt.text(f"{c['type']} @ {c['pos']}mm")
+                    if c_btn.button("Del", key=f"del_{i}"):
                         del st.session_state.components[i]
                         st.rerun()
-            
-            if st.button("Clear All", type="secondary"):
-                st.session_state.components = []
-                st.rerun()
+                
+                if st.button("Reset All Data", type="secondary"):
+                    st.session_state.components = []
+                    st.rerun()
         else:
-            st.info("No components added.")
+            st.info("System is empty. Add components above.")
 
 # ==========================================
 # RIGHT COLUMN: VISUALIZATION & ANALYSIS
@@ -245,8 +258,14 @@ with col_viz:
             M_eq = math.sqrt( (kb_input*max_M)**2 + (kt_input*T_nmm)**2 )
             d_req = ((16*M_eq)/(math.pi*tau_allow))**(1/3) if tau_allow > 0 else 0
             
-            st.success(f"### ✅ CALCULATED DIAMETER: {d_req:.3f} mm")
-            st.info(f"Torque: {T_nmm/1000:.2f} Nm | Max Moment: {max_M/1000:.2f} Nm | Allowable Shear: {tau_allow:.2f} MPa")
+            st.success(f"### ✅ MINIMUM DIAMETER: {d_req:.3f} mm")
+            
+            with st.expander("See Calculation Details"):
+                st.write(f"**Torque:** {T_nmm/1000:.2f} Nm")
+                st.write(f"**Max Bending Moment:** {max_M/1000:.2f} Nm")
+                st.write(f"**Allowable Shear:** {tau_allow:.2f} MPa")
+                st.write(f"**Reaction A:** V:{int(Rav)}N / H:{int(Rah)}N")
+                st.write(f"**Reaction B:** V:{int(Rbv)}N / H:{int(Rbh)}N")
 
             # ==========================================
             # FPDF REPORT GENERATION
@@ -280,7 +299,7 @@ with col_viz:
                 pdf.cell(col_w, 8, f"Shear Allow: {tau_allow:.1f}", 1, 1)
                 pdf.ln(5)
 
-                # SECTION 2: COMPONENTS
+                # SECTION 2: COMPONENTS (Mimicking Pandas Table)
                 pdf.set_font("Arial", "B", 12)
                 pdf.cell(0, 10, "2. LOAD INVENTORY", ln=True)
                 
@@ -306,6 +325,7 @@ with col_viz:
                 pdf.set_font("Arial", "B", 12)
                 pdf.cell(0, 10, "3. MOMENT DIAGRAMS", ln=True)
                 
+                # Switch to default (white) style for printing
                 with plt.style.context('default'):
                     fig_pdf = plt.figure(figsize=(8, 6))
                     gs_pdf = fig_pdf.add_gridspec(3, 1)
@@ -313,7 +333,7 @@ with col_viz:
                     ax_p2 = fig_pdf.add_subplot(gs_pdf[1])
                     ax_p3 = fig_pdf.add_subplot(gs_pdf[2])
                     
-                    # Re-plot for PDF (white bg)
+                    # Re-plot for PDF
                     ax_p1.plot(x_vals, [y/1000 for y in M_v], 'b'); ax_p1.set_ylabel("Vert (Nm)"); ax_p1.grid(True)
                     ax_p2.plot(x_vals, [y/1000 for y in M_h], 'g'); ax_p2.set_ylabel("Horz (Nm)"); ax_p2.grid(True)
                     ax_p3.plot(x_vals, [y/1000 for y in M_res], 'r'); ax_p3.set_ylabel("Res (Nm)"); ax_p3.grid(True)
@@ -350,7 +370,7 @@ with col_viz:
             )
 
         else:
-            st.warning("⚠️ Component Span Error: Overlapping or Reversed Bearings.")
+            st.error("⚠️ Geometry Error: Bearings must be separated (Span > 0).")
     else:
         st.pyplot(fig)
         st.warning("⚠️ SETUP INCOMPLETE: Please add exactly 2 Bearings to calculate.")
