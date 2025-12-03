@@ -284,103 +284,167 @@ with col_viz:
                     st.write(f"**Reaction B:** V:{int(Rbv)}N / H:{int(Rbh)}N")
 
                 # ==========================================
-                # FPDF REPORT GENERATION
+                # FPDF REPORT GENERATION (MATCHING REPORT2.PDF)
                 # ==========================================
                 def generate_pdf():
                     pdf = FPDF()
-                    pdf.add_page()
                     
-                    # HEADER
+                    # --- PAGE 1: DATA SHEET ---
+                    pdf.add_page()
                     pdf.set_font("Arial", "B", 16)
-                    pdf.cell(0, 10, "KINETIC NEXUS | ENGINEERING REPORT", ln=True, align='C')
-                    pdf.set_font("Arial", "I", 10)
-                    pdf.cell(0, 10, "Advanced Rotational Physics Analysis", ln=True, align='C')
+                    pdf.cell(0, 10, "DESIGN DATA SHEET", ln=True, align='C')
+                    pdf.set_font("Arial", "", 12)
+                    pdf.cell(0, 10, "ASME B106.1M Shaft Analysis", ln=True, align='C')
                     pdf.line(10, 30, 200, 30)
                     pdf.ln(10)
 
-                    # SECTION 1: DATA
-                    pdf.set_font("Arial", "B", 12)
-                    pdf.cell(0, 10, "1. KINETIC PARAMETERS", ln=True)
+                    # 1. GLOBAL PARAMETERS
+                    pdf.set_font("Arial", "B", 11)
+                    pdf.cell(0, 8, "1. GLOBAL PARAMETERS", ln=True)
                     pdf.set_font("Arial", "", 10)
                     
-                    col_w = 45
-                    pdf.cell(col_w, 8, f"Power: {p_input} kW", 1)
-                    pdf.cell(col_w, 8, f"Speed: {n_input} RPM", 1)
-                    pdf.cell(col_w, 8, f"Torque: {T_nmm/1000:.1f} Nm", 1)
-                    pdf.cell(col_w, 8, f"Length: {len_input} mm", 1, 1)
-                    
-                    pdf.cell(col_w, 8, f"Mat: {mat_choice[:15]}...", 1)
-                    pdf.cell(col_w, 8, f"Yield: {sy_input} MPa", 1)
-                    pdf.cell(col_w, 8, f"Ult: {sut_input} MPa", 1)
-                    pdf.cell(col_w, 8, f"Shear Allow: {tau_allow:.1f}", 1, 1)
+                    # Use a grid-like text dump for parameters
+                    p_text = f"Power: {p_input} kW\nSpeed: {n_input} RPM\nTorque: {T_nmm/1000:.2f} Nm\nLength: {len_input} mm\nMaterial: {mat_choice}"
+                    pdf.multi_cell(0, 6, p_text)
                     pdf.ln(5)
 
-                    # SECTION 2: COMPONENTS (Mimicking Pandas Table)
-                    pdf.set_font("Arial", "B", 12)
-                    pdf.cell(0, 10, "2. SYSTEM TOPOLOGY", ln=True)
+                    # 2. COMPONENT LOADS
+                    pdf.set_font("Arial", "B", 11)
+                    pdf.cell(0, 8, "2. COMPONENT LOADS", ln=True)
                     
+                    # Table Header
                     pdf.set_fill_color(240, 240, 240)
                     pdf.set_font("Arial", "B", 9)
-                    headers = ["Element", "Axial Pos", "V-Load", "H-Load", "Specs"]
-                    widths = [25, 20, 30, 30, 85]
-                    
-                    for w, h in zip(widths, headers):
-                        pdf.cell(w, 8, h, 1, 0, 'C', fill=True)
+                    headers = ["TYPE", "POS (mm)", "F_VERT (N)", "F_HORZ (N)"]
+                    w = [40, 30, 40, 40]
+                    for i, h in enumerate(headers):
+                        pdf.cell(w[i], 8, h, 1, 0, 'C', fill=True)
                     pdf.ln()
                     
+                    # Table Rows
                     pdf.set_font("Arial", "", 9)
                     for c in st.session_state.components:
-                        pdf.cell(widths[0], 8, str(c['type']), 1)
-                        pdf.cell(widths[1], 8, str(int(c['pos'])), 1)
-                        pdf.cell(widths[2], 8, str(int(c['fv'])), 1)
-                        pdf.cell(widths[3], 8, str(int(c['fh'])), 1)
-                        pdf.cell(widths[4], 8, str(c['desc']), 1, 1)
+                        pdf.cell(w[0], 8, str(c['type']), 1)
+                        pdf.cell(w[1], 8, str(int(c['pos'])), 1)
+                        pdf.cell(w[2], 8, str(int(c['fv'])), 1)
+                        pdf.cell(w[3], 8, str(int(c['fh'])), 1, 1)
                     pdf.ln(5)
 
-                    # SECTION 3: GRAPHS (Clean White Background for PDF)
-                    pdf.set_font("Arial", "B", 12)
-                    pdf.cell(0, 10, "3. MOMENT VECTORS", ln=True)
+                    # 3. CALCULATED REACTIONS
+                    pdf.set_font("Arial", "B", 11)
+                    pdf.cell(0, 8, "3. CALCULATED REACTIONS", ln=True)
+                    pdf.set_font("Arial", "", 10)
                     
-                    # Switch to default (white) style for printing
+                    # Reaction A
+                    pdf.cell(40, 6, "Bearing A (Left):", 0)
+                    pdf.cell(50, 6, f"Vert: {Rav:.1f} N", 0)
+                    pdf.cell(50, 6, f"Horz: {Rah:.1f} N", 0, 1)
+                    
+                    # Reaction B
+                    pdf.cell(40, 6, "Bearing B (Right):", 0)
+                    pdf.cell(50, 6, f"Vert: {Rbv:.1f} N", 0)
+                    pdf.cell(50, 6, f"Horz: {Rbh:.1f} N", 0, 1)
+                    
+                    # --- PAGE 2: IMAGES ---
+                    pdf.add_page()
+                    pdf.set_font("Arial", "B", 14)
+                    pdf.cell(0, 10, "SHAFT LAYOUT & MOMENT DIAGRAMS", ln=True, align='C')
+                    pdf.ln(5)
+                    
+                    # Temporarily switch plot style to WHITE for printing
                     with plt.style.context('default'):
-                        fig_pdf = plt.figure(figsize=(8, 6))
-                        gs_pdf = fig_pdf.add_gridspec(3, 1)
-                        ax_p1 = fig_pdf.add_subplot(gs_pdf[0])
-                        ax_p2 = fig_pdf.add_subplot(gs_pdf[1])
-                        ax_p3 = fig_pdf.add_subplot(gs_pdf[2])
+                        fig_pdf = plt.figure(figsize=(8, 10)) # Taller figure
+                        gs_pdf = fig_pdf.add_gridspec(4, 1, height_ratios=[1, 1, 1, 1.2])
                         
-                        # Re-plot for PDF
-                        ax_p1.plot(x_vals, [y/1000 for y in M_v], 'b'); ax_p1.set_ylabel("Vert (Nm)"); ax_p1.grid(True)
-                        ax_p2.plot(x_vals, [y/1000 for y in M_h], 'g'); ax_p2.set_ylabel("Horz (Nm)"); ax_p2.grid(True)
-                        ax_p3.plot(x_vals, [y/1000 for y in M_res], 'r'); ax_p3.set_ylabel("Res (Nm)"); ax_p3.grid(True)
+                        ax_p0 = fig_pdf.add_subplot(gs_pdf[0])
+                        ax_p1 = fig_pdf.add_subplot(gs_pdf[1])
+                        ax_p2 = fig_pdf.add_subplot(gs_pdf[2])
+                        ax_p3 = fig_pdf.add_subplot(gs_pdf[3])
                         
+                        # Schematic on PDF
+                        ax_p0.set_title("Shaft Layout Model", fontsize=9)
+                        ax_p0.set_xlim(-50, len_input+50); ax_p0.set_ylim(-50, 50)
+                        ax_p0.axis('off')
+                        ax_p0.plot([-20, len_input+20], [0, 0], '-.', color='black', lw=0.5)
+                        ax_p0.add_patch(patches.Rectangle((0, -5), len_input, 10, fc='lightgray', ec='black'))
+                        # Add components to schematic
+                        for c in st.session_state.components:
+                            cx = c['pos']
+                            if c['type'] == "Bearing":
+                                ax_p0.add_patch(patches.Polygon([[cx, -5], [cx-5, -15], [cx+5, -15]], fc='white', ec='black'))
+                                ax_p0.text(cx, -20, "Brg", ha='center', fontsize=6)
+                            elif c['type'] in ["Gear", "Pulley"]:
+                                color = 'salmon' if c['type']=="Gear" else 'skyblue'
+                                ax_p0.add_patch(patches.Rectangle((cx-5, -20), 10, 40, fc=color, alpha=0.5))
+                                ax_p0.text(cx, 22, c['type'], ha='center', fontsize=6)
+
+                        # Graphs
+                        ax_p1.plot(x_vals, [y/1000 for y in M_v], 'b'); ax_p1.set_ylabel("Vert (Nm)"); ax_p1.grid(True, alpha=0.3)
+                        ax_p1.set_title("Vertical Bending Moment", fontsize=8, color='blue', loc='left')
+                        ax_p1.fill_between(x_vals, [y/1000 for y in M_v], color='blue', alpha=0.1)
+                        
+                        ax_p2.plot(x_vals, [y/1000 for y in M_h], 'g'); ax_p2.set_ylabel("Horz (Nm)"); ax_p2.grid(True, alpha=0.3)
+                        ax_p2.set_title("Horizontal Bending Moment", fontsize=8, color='green', loc='left')
+                        ax_p2.fill_between(x_vals, [y/1000 for y in M_h], color='green', alpha=0.1)
+
+                        ax_p3.plot(x_vals, [y/1000 for y in M_res], 'r'); ax_p3.set_ylabel("Res (Nm)"); ax_p3.grid(True, alpha=0.3)
+                        ax_p3.set_title(f"Resultant Moment (Max: {max_M/1000:.1f} Nm)", fontsize=8, color='red', loc='left')
+                        ax_p3.fill_between(x_vals, [y/1000 for y in M_res], color='red', alpha=0.1)
+
                         plt.tight_layout()
                         
-                        # Save to temp file
+                        # Save & Embed
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
                             fig_pdf.savefig(tmpfile.name, dpi=150)
                             tmp_name = tmpfile.name
                         
-                        # Embed and delete
-                        pdf.image(tmp_name, x=10, w=190)
+                        pdf.image(tmp_name, x=10, y=40, w=190)
                         os.unlink(tmp_name)
 
-                    # SECTION 4: RESULT
+                    # --- PAGE 3: DETAILED CALCULATIONS ---
+                    pdf.add_page()
+                    pdf.set_font("Arial", "B", 12)
+                    pdf.cell(0, 10, "DETAILED CALCULATIONS", ln=True)
                     pdf.ln(5)
-                    pdf.set_fill_color(220, 255, 220)
-                    pdf.rect(10, pdf.get_y(), 190, 15, 'DF')
-                    pdf.set_y(pdf.get_y() + 4)
-                    pdf.set_font("Arial", "B", 14)
-                    pdf.cell(0, 8, f"MINIMUM SHAFT DIAMETER REQUIRED: {d_req:.3f} mm", align='C')
+
+                    # A. Allowable Stress
+                    pdf.set_font("Arial", "B", 10)
+                    pdf.cell(0, 6, "A. Allowable Stress (Tau)", ln=True)
+                    pdf.set_font("Arial", "", 10)
+                    base_tau = min(0.3*sy_input, 0.18*sut_input)
+                    pdf.cell(0, 6, f"Sy: {sy_input} MPa, Sut: {sut_input} MPa", ln=True)
+                    pdf.cell(0, 6, f"Base Tau = min(0.3*Sy, 0.18*Sut) = {base_tau:.1f} MPa", ln=True)
+                    pdf.cell(0, 6, f"Keyway Factor = {0.75 if keyway_present else 1.0}", ln=True)
+                    pdf.cell(0, 6, f"Final Tau_allow = {tau_allow:.2f} MPa", ln=True)
+                    pdf.ln(5)
+
+                    # B. Equivalent Moment
+                    pdf.set_font("Arial", "B", 10)
+                    pdf.cell(0, 6, "B. Equivalent Moment (M_eq)", ln=True)
+                    pdf.set_font("Arial", "", 10)
+                    pdf.cell(0, 6, f"Max Bending (M) = {max_M/1000:.1f} Nm", ln=True)
+                    pdf.cell(0, 6, f"Torque (T) = {T_nmm/1000:.1f} Nm", ln=True)
+                    pdf.cell(0, 6, f"Shock Factors: Kb={kb_input}, Kt={kt_input}", ln=True)
+                    pdf.cell(0, 6, f"M_eq = sqrt( (Kb*M)^2 + (Kt*T)^2 )", ln=True)
+                    pdf.cell(0, 6, f"M_eq = {M_eq/1000:.1f} Nm", ln=True)
+                    pdf.ln(5)
+
+                    # C. Diameter
+                    pdf.set_font("Arial", "B", 10)
+                    pdf.cell(0, 6, "C. Diameter Calculation", ln=True)
+                    pdf.set_font("Arial", "", 10)
+                    pdf.cell(0, 6, "d = [ (16 * M_eq) / (pi * Tau) ] ^ (1/3)", ln=True)
+                    pdf.set_font("Arial", "B", 12)
+                    pdf.cell(0, 10, f"d = {d_req:.3f} mm", ln=True)
 
                     return pdf.output(dest='S').encode('latin-1')
 
                 # --- DOWNLOAD BUTTON ---
                 pdf_bytes = generate_pdf()
                 st.download_button(
-                    label="📥 Download Professional Report (PDF)",
+                    label="📥 Download Design Data Sheet (PDF)",
                     data=pdf_bytes,
-                    file_name="KineticNexus_Report.pdf",
+                    file_name="Shaft_Design_Data_Sheet.pdf",
                     mime="application/pdf",
                     use_container_width=True
                 )
